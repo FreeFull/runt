@@ -1,0 +1,10 @@
+[package]
+name = "runt"
+version = "0.1.0"
+authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
+
+[dependencies]
+html5ever = "0.22.3"
+reqwest = "0.8.8"
+tokio-core = "0.1.17"
+failure = "0.1.2"
