@@ -3,6 +3,7 @@ extern crate html5ever;
 extern crate reqwest;
 
 use std::default::Default;
+use std::env::args;
 
 use html5ever::parse_document;
 use html5ever::rcdom::{Node, NodeData, RcDom};
@@ -13,7 +14,9 @@ fn main() {
 }
 
 fn run() -> Result<(), failure::Error> {
-    let body = reqwest::get("https://www.rust-lang.org")?.text()?;
+    let url = args().nth(1);
+    let url = url.as_ref().map(|url| &url[..]).unwrap_or("https://www.rust-lang.org");
+    let body = reqwest::get(url)?.text()?;
     let dom = parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut body.as_bytes())?;
