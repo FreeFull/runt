@@ -5,6 +5,10 @@ authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
 
 [dependencies]
 html5ever = "0.22.3"
-reqwest = "0.8.8"
-tokio-core = "0.1.17"
+tokio = "0.1.8"
+hyper = "0.12.8"
+hyper-tls = "0.3.0"
+futures = "0.1.23"
 failure = "0.1.2"
+chrono = "0.4.6"
+bytes = "0.4.9"
