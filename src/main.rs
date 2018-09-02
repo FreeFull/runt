@@ -14,10 +14,12 @@ use html5ever::parse_document;
 use html5ever::rcdom::{Node, NodeData, RcDom};
 use html5ever::tendril::TendrilSink;
 
-use futures::stream::Stream;
-use futures::Future;
+use futures::prelude::*;
 
 use bytes::Buf;
+
+mod fetcher;
+use fetcher::fetcher;
 
 fn main() {
     run().unwrap();
@@ -31,22 +33,13 @@ fn run() -> Result<(), failure::Error> {
         .unwrap_or("https://www.rust-lang.org")
         .parse()?;
     tokio::run(futures::lazy(|| {
-        let https = hyper_tls::HttpsConnector::new(4).unwrap();
-        let client = hyper::Client::builder().build::<_, hyper::Body>(https);
-        client
+        let mut fetcher = fetcher().unwrap();
+        fetcher
             .get(url)
-            .from_err()
-            .and_then(|response| {
-                if response.status() != hyper::StatusCode::OK {
-                    bail!("HTTP status code: {}", response.status())
-                } else {
-                    Ok(response.into_body().concat2().from_err())
-                }
-            }).and_then(|body| body)
-            .and_then(|body| {
+            .and_then(|chunk| {
                 let dom = parse_document(RcDom::default(), Default::default())
                     .from_utf8()
-                    .read_from(&mut body.reader())?;
+                    .read_from(&mut chunk.reader())?;
                 walk(&dom.document, 0);
                 Ok(())
             }).then(|result| {
