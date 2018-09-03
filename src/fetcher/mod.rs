@@ -1,20 +1,18 @@
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use futures;
-use futures::prelude::*;
-
-use failure;
-
-use hyper;
-use hyper_tls;
-
-mod cache;
-use self::cache::{Cache, CacheItem};
-
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use failure;
+use futures;
+use futures::prelude::*;
+use hyper;
+use hyper_tls;
+use url::Url;
+
+mod cache;
+use self::cache::{Cache, CacheItem};
 
 pub struct Fetcher {
     client: hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
@@ -42,8 +40,9 @@ impl Fetcher {
         if scheme_is_file {
             let path;
             if uri.starts_with("file://") {
-                // TODO: Handle file URIs that specify the host
-                path = PathBuf::from(&uri["file://".len()..]);
+                // TODO Error handling
+                let url = Url::parse(&uri).unwrap();
+                path = url.to_file_path().unwrap();
             } else {
                 path = PathBuf::from(uri);
             }

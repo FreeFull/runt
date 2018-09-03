@@ -6,6 +6,7 @@ extern crate html5ever;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate tokio;
+extern crate url;
 
 use std::default::Default;
 use std::env::args;
