@@ -19,7 +19,7 @@ use futures::prelude::*;
 use bytes::Buf;
 
 mod fetcher;
-use fetcher::fetcher;
+use fetcher::Fetcher;
 
 fn main() {
     run().unwrap();
@@ -33,7 +33,7 @@ fn run() -> Result<(), failure::Error> {
         .unwrap_or("https://www.rust-lang.org")
         .parse()?;
     tokio::run(futures::lazy(|| {
-        let mut fetcher = fetcher().unwrap();
+        let mut fetcher = Fetcher::new().unwrap();
         fetcher
             .get(url)
             .and_then(|chunk| {

@@ -14,6 +14,16 @@ pub struct Fetcher {
 }
 
 impl Fetcher {
+    pub fn new() -> Result<Fetcher, failure::Error> {
+        let https = hyper_tls::HttpsConnector::new(4)?;
+        let client = hyper::Client::builder().build::<_, hyper::Body>(https);
+        let fetcher = Fetcher {
+            client,
+            cache: Cache::new(),
+        };
+        Ok(fetcher)
+    }
+
     pub fn get(
         &mut self,
         uri: hyper::Uri,
@@ -29,14 +39,4 @@ impl Fetcher {
                 }
             }).and_then(|chunk| chunk)
     }
-}
-
-pub fn fetcher() -> Result<Fetcher, failure::Error> {
-    let https = hyper_tls::HttpsConnector::new(4)?;
-    let client = hyper::Client::builder().build::<_, hyper::Body>(https);
-    let fetcher = Fetcher {
-        client,
-        cache: Cache::new(),
-    };
-    Ok(fetcher)
 }
