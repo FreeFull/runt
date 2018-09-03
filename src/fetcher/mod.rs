@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use futures;
 use futures::prelude::*;
 
@@ -7,7 +10,7 @@ use hyper;
 use hyper_tls;
 
 mod cache;
-use self::cache::Cache;
+use self::cache::{Cache, CacheItem};
 
 use std::fs::File;
 use std::io::Read;
@@ -15,7 +18,7 @@ use std::path::PathBuf;
 
 pub struct Fetcher {
     client: hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
-    cache: Cache,
+    cache: Arc<Mutex<Cache>>,
 }
 
 impl Fetcher {
@@ -24,7 +27,7 @@ impl Fetcher {
         let client = hyper::Client::builder().build::<_, hyper::Body>(https);
         let fetcher = Fetcher {
             client,
-            cache: Cache::new(),
+            cache: Arc::new(Mutex::new(Cache::new())),
         };
         Ok(fetcher)
     }
@@ -66,8 +69,20 @@ impl Fetcher {
         &mut self,
         uri: hyper::Uri,
     ) -> impl Future<Item = hyper::Chunk, Error = failure::Error> {
-        self.client
-            .get(uri)
+        let cache = self.cache.clone();
+        let cached_item = futures::lazy({
+            let cache = cache.clone();
+            let uri = uri.clone();
+            move || {
+                let mut lock = cache.lock().map_err(|_| ())?;
+                lock.get(&uri)
+                    .map(|item| hyper::Chunk::from(item.data))
+                    .ok_or(())
+            }
+        });
+        let fetch = self
+            .client
+            .get(uri.clone())
             .from_err()
             .and_then(|response| {
                 if response.status() != hyper::StatusCode::OK {
@@ -75,6 +90,14 @@ impl Fetcher {
                 } else {
                     Ok(response.into_body().concat2().from_err())
                 }
-            }).and_then(|chunk| chunk)
+            }).flatten()
+            .and_then(move |chunk| {
+                cache
+                    .lock()
+                    .map_err(|_| format_err!("cache locking failed"))?
+                    .put(uri, CacheItem::new(chunk.to_vec(), ()));
+                Ok(chunk)
+            });
+        cached_item.or_else(|_| fetch)
     }
 }
