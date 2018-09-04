@@ -34,12 +34,14 @@ impl Fetcher {
         &mut self,
         uri: String,
     ) -> Box<dyn Future<Item = hyper::Chunk, Error = failure::Error> + Send> {
-        let scheme_is_file =
-            uri.starts_with("file://") || uri.starts_with("/") || uri.starts_with("./");
+        let scheme_is_file = uri.starts_with("file:")
+            || uri.starts_with("/")
+            || uri.starts_with("./")
+            || uri.starts_with("../");
         let scheme_is_http = uri.starts_with("http://") || uri.starts_with("https://");
         if scheme_is_file {
             let path;
-            if uri.starts_with("file://") {
+            if uri.starts_with("file:") {
                 // TODO Error handling
                 let url = Url::parse(&uri).unwrap();
                 path = url.to_file_path().unwrap();
