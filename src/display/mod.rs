@@ -50,7 +50,10 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                     "b" | "strong" | "h1" | "h2" | "h3" | "h4" => {
                         new_style.bold += 1;
                     }
-                    "a" => {
+                    "i" | "em" => {
+                        new_style.italic += 1;
+                    }
+                    "a" | "u" => {
                         new_style.underline += 1;
                     }
                     "p" | "div" => {
