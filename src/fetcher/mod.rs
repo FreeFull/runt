@@ -42,13 +42,19 @@ impl Fetcher {
         if scheme_is_file {
             let path;
             if uri.starts_with("file:") {
-                // TODO Error handling
-                let url = Url::parse(&uri).unwrap();
-                path = url.to_file_path().unwrap();
+                let url = Url::parse(&uri).map_err(failure::Error::from);
+                path = url.and_then(|url| {
+                    url.to_file_path().map_err(|()| {
+                        format_err!("Failed to convert `file:` URI to a path: {}", url)
+                    })
+                });
             } else {
-                path = PathBuf::from(uri);
+                path = Ok(PathBuf::from(uri));
             }
-            Box::new(self.get_file(path))
+            match path {
+                Ok(path) => Box::new(self.get_file(path)),
+                Err(err) => Box::new(futures::future::err(err)),
+            }
         } else if scheme_is_http {
             Box::new(self.get_http(uri.parse().unwrap()))
         } else {
