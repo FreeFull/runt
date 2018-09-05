@@ -72,8 +72,11 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                     "pre" | "textarea" => {
                         new_style.preformatted = true;
                     }
-                    "script" => {
+                    "script" | "head" | "style" => {
                         return;
+                    }
+                    "q" => {
+                        print!("\"");
                     }
                     _ => {}
                 }
@@ -91,6 +94,9 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                         } else {
                             print!("<>");
                         }
+                    }
+                    "q" => {
+                        print!("\"");
                     }
                     _ => {}
                 }
