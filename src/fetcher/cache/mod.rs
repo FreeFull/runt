@@ -30,7 +30,6 @@ impl Cache {
     pub fn put(&mut self, url: hyper::Uri, item: CacheItem) {
         self.cache.insert(url, item);
         self.clean_up();
-        println!("Cache: {:?}", self);
     }
 
     pub fn clean_up(&mut self) {
