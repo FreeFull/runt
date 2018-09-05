@@ -28,7 +28,7 @@ fn main() {
 
 fn run() -> Result<(), failure::Error> {
     let url = args().nth(1);
-    let url = url.unwrap_or(String::from("https://www.rust-lang.org"));
+    let url = url.unwrap_or(String::from("https://www.rust-lang.org/en-US/"));
     tokio::run(futures::lazy(move || {
         let mut fetcher = Fetcher::new().unwrap();
         fetcher
