@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate failure;
 extern crate bytes;
+extern crate cssparser;
 extern crate futures;
 extern crate html5ever;
 extern crate hyper;
@@ -24,6 +25,8 @@ mod fetcher;
 use fetcher::Fetcher;
 
 mod display;
+
+mod css;
 
 fn main() {
     run().unwrap();
