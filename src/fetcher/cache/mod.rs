@@ -33,9 +33,7 @@ impl Cache {
     }
 
     pub fn clean_up(&mut self) {
-        self.cache.retain(|_key, value| {
-            !value.expired()
-        });
+        self.cache.retain(|_key, value| !value.expired());
     }
 }
 
