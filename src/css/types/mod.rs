@@ -1,14 +1,10 @@
 use std;
+use url::Url;
 
 #[derive(Clone, Debug)]
 pub struct Stylesheet {
     pub rules: Vec<Rule>,
-}
-
-impl Stylesheet {
-    pub fn merge(&mut self, mut other: Stylesheet) {
-        self.rules.append(&mut other.rules)
-    }
+    pub base_url: Url,
 }
 
 #[derive(Clone, Debug)]
