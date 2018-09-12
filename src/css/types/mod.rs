@@ -1,19 +1,19 @@
 use std;
 use url::Url;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Stylesheet {
     pub rules: Vec<Rule>,
     pub base_url: Url,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Rule {
     pub selectors: Vec<SelectorChain>,
     pub declarations: Vec<Declaration>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SelectorChain {
     Simple(SimpleSelector),
     Descendant(Box<SelectorChain>, SimpleSelector),
@@ -38,7 +38,7 @@ impl SelectorChain {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SimpleSelector {
     pub type_selector: TypeSelector,
     pub attribute_selectors: Vec<AttributeSelector>,
@@ -64,13 +64,19 @@ impl SimpleSelector {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypeSelector {
     Type(String),
     Universal,
 }
 
-#[derive(Clone, Debug)]
+impl Default for TypeSelector {
+    fn default() -> Self {
+        TypeSelector::Universal
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum AttributeSelector {
     Has { attribute: String },
     Equals { attribute: String, value: String },
@@ -78,13 +84,13 @@ pub enum AttributeSelector {
     Subcode { attribute: String, value: String },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IdSelector(pub String);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClassSelector(pub String);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PseudoElement {
     FirstLine,
     FirstLetter,
@@ -92,7 +98,7 @@ pub enum PseudoElement {
     After,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PseudoClass {
     FirstChild,
     Link,
@@ -103,17 +109,18 @@ pub enum PseudoClass {
     Lang(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Declaration {
-    name: String,
-    value: Value,
+    pub name: String,
+    pub value: Vec<Value>,
+    pub important: bool,
 }
 
-#[derive(Clone, Debug)]
-pub enum Value {}
+#[derive(Clone, Debug, PartialEq)]
+pub struct Value(pub String);
 
 /// https://www.w3.org/TR/selectors/#specificity
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Specificity {
     pub a: u32,
     pub b: u32,
