@@ -1,10 +1,12 @@
+use std;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use failure;
+use bytes::Bytes;
+use failure::{self, Fail};
 use futures;
 use futures::prelude::*;
 use hyper;
@@ -12,7 +14,7 @@ use hyper_tls;
 use url::Url;
 
 mod cache;
-use self::cache::{Cache, CacheItem};
+use self::cache::Cache;
 
 pub struct Fetcher {
     client: hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
@@ -20,7 +22,7 @@ pub struct Fetcher {
 }
 
 impl Fetcher {
-    pub fn new() -> Result<Fetcher, failure::Error> {
+    pub fn new() -> Result<Fetcher, Error> {
         let https = hyper_tls::HttpsConnector::new(4)?;
         let client = hyper::Client::builder().build::<_, hyper::Body>(https);
         let fetcher = Fetcher {
@@ -30,81 +32,119 @@ impl Fetcher {
         Ok(fetcher)
     }
 
-    pub fn get(
-        &mut self,
-        uri: String,
-    ) -> Box<dyn Future<Item = hyper::Chunk, Error = failure::Error> + Send> {
-        let scheme_is_file = uri.starts_with("file:")
-            || uri.starts_with("/")
-            || uri.starts_with("./")
-            || uri.starts_with("../");
-        let scheme_is_http = uri.starts_with("http://") || uri.starts_with("https://");
+    pub fn get(&mut self, url: &Url) -> Box<dyn Future<Item = Data, Error = Error> + Send> {
+        let scheme_is_file = url.scheme() == "file";
+        let scheme_is_http = url.scheme() == "http" || url.scheme() == "https";
         if scheme_is_file {
-            let path;
-            if uri.starts_with("file:") {
-                let url = Url::parse(&uri).map_err(failure::Error::from);
-                path = url.and_then(|url| {
-                    url.to_file_path().map_err(|()| {
-                        format_err!("Failed to convert `file:` URI to a path: {}", url)
-                    })
-                });
-            } else {
-                path = Ok(PathBuf::from(uri));
-            }
+            let path = url
+                .to_file_path()
+                .map_err(|()| format_err!("Failed to convert `file:` URI to a path: {}", url));
             match path {
-                Ok(path) => Box::new(self.get_file(path)),
-                Err(err) => Box::new(futures::future::err(err)),
+                Ok(path) => Box::new(self.get_file(path).map(Data::File)),
+                Err(err) => Box::new(futures::future::err(err.into())),
             }
         } else if scheme_is_http {
-            Box::new(self.get_http(uri.parse().unwrap()))
+            // It is theoretically possible that a valid url::Url isn't a valid hyper::Uri
+            // For now, take the easiest route for converting between the two
+            let hyper_uri = url.as_ref().parse().unwrap();
+            Box::new(self.get_http(hyper_uri).map(Data::Http))
         } else {
-            Box::new(futures::future::err(format_err!("Invalid URI: {}", uri)))
+            Box::new(futures::future::err(
+                format_err!("Invalid URL: {}", url).into(),
+            ))
         }
     }
 
-    fn get_file(&self, path: PathBuf) -> impl Future<Item = hyper::Chunk, Error = failure::Error> {
+    fn get_file(&self, path: PathBuf) -> impl Future<Item = Bytes, Error = Error> {
         futures::lazy(move || {
             let mut file = File::open(path)?;
             let mut file_contents = vec![];
             file.read_to_end(&mut file_contents)?;
-            let chunk = hyper::Chunk::from(file_contents);
-            Ok(chunk)
+            let bytes = Bytes::from(file_contents);
+            Ok(bytes)
         })
     }
 
     fn get_http(
         &mut self,
         uri: hyper::Uri,
-    ) -> impl Future<Item = hyper::Chunk, Error = failure::Error> {
-        let cache = self.cache.clone();
-        let cached_item = futures::lazy({
-            let cache = cache.clone();
-            let uri = uri.clone();
-            move || {
-                let mut lock = cache.lock().map_err(|_| ())?;
-                lock.get(&uri)
-                    .map(|item| hyper::Chunk::from(item.data))
-                    .ok_or(())
-            }
-        });
-        let fetch = self
-            .client
+    ) -> impl Future<Item = hyper::Response<Bytes>, Error = Error> {
+        self.client
             .get(uri.clone())
             .from_err()
             .and_then(|response| {
-                if response.status() != hyper::StatusCode::OK {
-                    bail!("HTTP status code: {}", response.status())
-                } else {
-                    Ok(response.into_body().concat2().from_err())
-                }
-            }).flatten()
-            .and_then(move |chunk| {
-                cache
-                    .lock()
-                    .map_err(|_| format_err!("cache locking failed"))?
-                    .put(uri, CacheItem::new(chunk.to_vec(), ()));
-                Ok(chunk)
-            });
-        cached_item.or_else(|_| fetch)
+                let (parts, body) = response.into_parts();
+                body.concat2().from_err().and_then(move |chunk| {
+                    Ok(hyper::Response::from_parts(parts, chunk.into_bytes()))
+                })
+            })
+    }
+}
+
+pub enum Data {
+    Http(hyper::Response<Bytes>),
+    File(Bytes),
+}
+
+impl std::convert::AsRef<[u8]> for Data {
+    fn as_ref(&self) -> &[u8] {
+        match *self {
+            Data::Http(ref response) => response.body().as_ref(),
+            Data::File(ref bytes) => bytes.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    File(std::io::Error),
+    Http(hyper::error::Error),
+    Tls(hyper_tls::Error),
+    Other(failure::Error),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Error::File(ref err) => err.fmt(f),
+            Error::Http(ref err) => err.fmt(f),
+            Error::Tls(ref err) => err.fmt(f),
+            Error::Other(ref err) => err.fmt(f),
+        }
+    }
+}
+
+impl failure::Fail for Error {
+    fn cause(&self) -> Option<&Fail> {
+        match *self {
+            Error::File(ref err) => Some(err),
+            Error::Http(ref err) => Some(err),
+            Error::Tls(ref err) => Some(err),
+            Error::Other(ref err) => Some(err.as_fail()),
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Error {
+        Error::File(error)
+    }
+}
+
+impl From<hyper::error::Error> for Error {
+    fn from(error: hyper::error::Error) -> Error {
+        Error::Http(error)
+    }
+}
+
+impl From<hyper_tls::Error> for Error {
+    fn from(error: hyper_tls::Error) -> Error {
+        Error::Tls(error)
+    }
+}
+
+impl From<failure::Error> for Error {
+    fn from(error: failure::Error) -> Error {
+        Error::Other(error)
     }
 }

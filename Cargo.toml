@@ -1,17 +1,19 @@
 [package]
+authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
+license = "MIT"
 name = "runt"
 version = "0.1.0"
-authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
 
 [dependencies]
-html5ever = "0.22.3"
-tokio = "0.1.8"
-hyper = "0.12.8"
-hyper-tls = "0.3.0"
-futures = "0.1.23"
-failure = "0.1.2"
+bytes = "0.4.10"
 chrono = "0.4.6"
-bytes = "0.4.9"
-url = "1.7.1"
-termion = "1.5.1"
 cssparser = "0.24.0"
+failure = "0.1.2"
+futures = "0.1.24"
+html5ever = "0.22.3"
+hyper = "0.12.10"
+hyper-tls = "0.3.0"
+http = "0.1.13"
+termion = "1.5.1"
+tokio = "0.1.8"
+url = "1.7.1"
