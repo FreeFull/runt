@@ -15,7 +15,7 @@ use tokio;
 use url::Url;
 
 use css::Stylesheet;
-use fetcher::{Fetcher, Data};
+use fetcher::{Data, Fetcher};
 
 pub struct Page {
     pub url: Url,
@@ -45,7 +45,7 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
     let dom = parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut Cursor::new(page))?;
-    fetch_resources_from_dom(&dom.document, &request_tx, FetchState::default());
+    fetch_resources_from_dom(&url, &dom.document, &request_tx, FetchState::default());
     drop(request_tx);
     let mut resources = Resources::default();
     for result in results_iter {
@@ -57,14 +57,9 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
                 (Some(parts), data)
             }
         };
-        resources.resources.insert(
-            url.clone(),
-            Resource {
-                url,
-                parts,
-                data,
-            },
-        );
+        resources
+            .resources
+            .insert(url.clone(), Resource { url, parts, data });
     }
     Ok(Page {
         url,
@@ -74,24 +69,53 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
     })
 }
 
-// TODO
-fn fetch_resources_from_dom(node: &Node, tx: &UnboundedSender<Url>, mut fetch_flags: FetchState) {
+fn fetch_resources_from_dom(origin: &Url, node: &Node, tx: &UnboundedSender<Url>, mut fetch_state: FetchState) {
     match node.data {
         NodeData::Element {
             ref name,
             ref attrs,
             ..
         } => match &*name.local.to_ascii_lowercase() {
-            "head" => {}
-            "body" => {}
-            "link" => {}
-            "img" => {}
+            "head" => {
+                fetch_state = FetchState::InsideHead;
+            }
+            "body" => {
+                fetch_state = FetchState::InsideBody;
+            }
+            "link" => {
+                let attrs = attrs.borrow();
+                if attrs
+                    .iter()
+                    .any(|attr| &attr.name.local == "rel" && &*attr.value == "stylesheet")
+                {
+                    if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "href") {
+                        if let Ok(url) = origin.join(&url.value) {
+                            tx.unbounded_send(url).expect("Fetcher send failed");
+                        }
+                    }
+                }
+            }
+            "img" => {
+                let attrs = attrs.borrow();
+                if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "src") {
+                    if let Ok(url) = origin.join(&url.value) {
+                        tx.unbounded_send(url).expect("Fetcher send failed");
+                    }
+                }
+            }
+            "template" => {
+                return;
+            }
             _ => {}
         },
         _ => {}
     }
+    for child in node.children.borrow().iter() {
+        fetch_resources_from_dom(origin, child, tx, fetch_state);
+    }
 }
 
+#[derive(Copy, Clone)]
 enum FetchState {
     InsideHead,
     InsideBody,
