@@ -19,7 +19,7 @@ fn simple_selector() {
 
 #[test]
 fn universal_selector() {
-    let style = "* { }";
+    let style = "* { background: red !important; }";
     let url = Url::parse("http://www.example.com/").unwrap();
     let stylesheet = Stylesheet::parse(style, url).unwrap();
     let expected = SelectorChain::Simple(SimpleSelector::default());

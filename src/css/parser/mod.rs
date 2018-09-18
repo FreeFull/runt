@@ -31,7 +31,7 @@ struct TopLevelRuleParser<'a> {
 }
 
 impl<'a> TopLevelRuleParser<'a> {
-    fn new() -> TopLevelRuleParser<'static> {
+    fn new() -> TopLevelRuleParser<'a> {
         TopLevelRuleParser {
             _phantom: PhantomData,
         }
