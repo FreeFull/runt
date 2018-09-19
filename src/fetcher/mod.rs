@@ -32,7 +32,7 @@ impl Fetcher {
         Ok(fetcher)
     }
 
-    pub fn get(&mut self, url: &Url) -> Box<dyn Future<Item = Data, Error = Error> + Send> {
+    pub fn get(&self, url: &Url) -> Box<dyn Future<Item = Data, Error = Error> + Send> {
         let scheme_is_file = url.scheme() == "file";
         let scheme_is_http = url.scheme() == "http" || url.scheme() == "https";
         if scheme_is_file {
@@ -66,7 +66,7 @@ impl Fetcher {
     }
 
     fn get_http(
-        &mut self,
+        &self,
         uri: hyper::Uri,
     ) -> impl Future<Item = hyper::Response<Bytes>, Error = Error> {
         self.client
