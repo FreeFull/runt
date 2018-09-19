@@ -11,11 +11,12 @@ use futures;
 use futures::prelude::*;
 use hyper;
 use hyper_tls;
-use url::Url;
+use url::{self, Url};
 
 mod cache;
 use self::cache::Cache;
 
+#[derive(Debug, Clone)]
 pub struct Fetcher {
     client: hyper::Client<hyper_tls::HttpsConnector<hyper::client::HttpConnector>, hyper::Body>,
     cache: Arc<Mutex<Cache>>,
@@ -55,6 +56,34 @@ impl Fetcher {
         }
     }
 
+    pub fn get_with_redirect(
+        self,
+        url: Url,
+        max_redirects: u16,
+    ) -> impl Future<Item = Data, Error = Error> {
+        use futures::future::{loop_fn, Loop};
+        let fetcher = self;
+        loop_fn((url, max_redirects), move |(url, max_redirects)| {
+            fetcher.get(&url).and_then(move |data| {
+                match data {
+                    Data::File(_) => {
+                        return Ok(Loop::Break(data));
+                    }
+                    Data::Http(ref request) => {
+                        if request.status().is_redirection() && max_redirects > 0 {
+                            if let Some(new_url) = request.headers().get(hyper::header::LOCATION) {
+                                let url =
+                                    url.join(new_url.to_str().map_err(failure::Error::from)?)?;
+                                return Ok(Loop::Continue((url, max_redirects - 1)));
+                            }
+                        }
+                    }
+                }
+                Ok(Loop::Break(data))
+            })
+        })
+    }
+
     fn get_file(&self, path: PathBuf) -> impl Future<Item = Bytes, Error = Error> {
         futures::lazy(move || {
             let mut file = File::open(path)?;
@@ -81,6 +110,7 @@ impl Fetcher {
     }
 }
 
+#[derive(Debug)]
 pub enum Data {
     Http(hyper::Response<Bytes>),
     File(Bytes),
@@ -100,6 +130,7 @@ pub enum Error {
     File(std::io::Error),
     Http(hyper::error::Error),
     Tls(hyper_tls::Error),
+    UrlParseError(url::ParseError),
     Other(failure::Error),
 }
 
@@ -109,6 +140,7 @@ impl std::fmt::Display for Error {
             Error::File(ref err) => err.fmt(f),
             Error::Http(ref err) => err.fmt(f),
             Error::Tls(ref err) => err.fmt(f),
+            Error::UrlParseError(ref err) => err.fmt(f),
             Error::Other(ref err) => err.fmt(f),
         }
     }
@@ -120,6 +152,7 @@ impl failure::Fail for Error {
             Error::File(ref err) => Some(err),
             Error::Http(ref err) => Some(err),
             Error::Tls(ref err) => Some(err),
+            Error::UrlParseError(ref err) => Some(err),
             Error::Other(ref err) => Some(err.as_fail()),
         }
     }
@@ -140,6 +173,12 @@ impl From<hyper::error::Error> for Error {
 impl From<hyper_tls::Error> for Error {
     fn from(error: hyper_tls::Error) -> Error {
         Error::Tls(error)
+    }
+}
+
+impl From<url::ParseError> for Error {
+    fn from(error: url::ParseError) -> Error {
+        Error::UrlParseError(error)
     }
 }
 

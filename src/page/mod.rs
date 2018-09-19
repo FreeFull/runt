@@ -33,7 +33,10 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
                 let fetcher = Fetcher::new().unwrap();
                 request_rx
                     .and_then(move |url: Url| {
-                        fetcher.get(&url).then(move |response| Ok((url, response)))
+                        fetcher
+                            .clone()
+                            .get_with_redirect(url.clone(), 30)
+                            .then(move |response| Ok((url, response)))
                     }).forward(results_tx.sink_map_err(|_| ()))
             }).then(|_| Ok(())),
         )
@@ -69,7 +72,12 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
     })
 }
 
-fn fetch_resources_from_dom(origin: &Url, node: &Node, tx: &UnboundedSender<Url>, mut fetch_state: FetchState) {
+fn fetch_resources_from_dom(
+    origin: &Url,
+    node: &Node,
+    tx: &UnboundedSender<Url>,
+    mut fetch_state: FetchState,
+) {
     match node.data {
         NodeData::Element {
             ref name,
