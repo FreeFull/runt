@@ -30,7 +30,7 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
     thread::spawn(move || {
         tokio::run(
             futures::lazy(move || {
-                let mut fetcher = Fetcher::new().unwrap();
+                let fetcher = Fetcher::new().unwrap();
                 request_rx
                     .and_then(move |url: Url| {
                         fetcher.get(&url).then(move |response| Ok((url, response)))
