@@ -53,7 +53,7 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser<'i> {
     fn parse_block<'t>(
         &mut self,
         prelude: Self::Prelude,
-        location: SourceLocation,
+        _location: SourceLocation,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
         let declaration_parser = DeclarationListParser::new(input, RuleDeclarationParser {});
@@ -101,7 +101,7 @@ impl<'i> DeclarationParser<'i> for RuleDeclarationParser {
             }
             Ok(())
         })?;
-        let important = input.try(parse_important).is_ok();
+        let important = input.r#try(parse_important).is_ok();
         input.expect_exhausted()?;
         Ok(Declaration {
             name: String::from(&*name),

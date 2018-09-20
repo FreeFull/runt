@@ -1,4 +1,4 @@
-use super::super::types::*;
+use crate::css::types::*;
 use url::Url;
 
 #[test]
@@ -6,7 +6,7 @@ fn simple_selector() {
     let style = "div, h1, ul { background: red !important; }";
     let url = Url::parse("http://www.example.com/").unwrap();
     let stylesheet = Stylesheet::parse(style, url).unwrap();
-    let mut expected = ["div", "h1", "ul"]
+    let expected = ["div", "h1", "ul"]
         .iter()
         .map(|&elem| {
             SelectorChain::Simple(SimpleSelector {

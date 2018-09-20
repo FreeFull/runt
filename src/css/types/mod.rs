@@ -1,4 +1,3 @@
-use std;
 use url::Url;
 
 #[derive(Clone, Debug, PartialEq)]

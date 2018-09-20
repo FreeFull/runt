@@ -3,6 +3,7 @@ authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
 license = "MIT"
 name = "runt"
 version = "0.1.0"
+edition = "2018"
 
 [dependencies]
 bytes = "0.4.10"

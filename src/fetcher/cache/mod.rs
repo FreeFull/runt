@@ -1,4 +1,3 @@
-use hyper;
 use std::collections::HashMap;
 
 #[derive(Debug)]

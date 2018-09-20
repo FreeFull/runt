@@ -1,17 +1,13 @@
-use std;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use failure::{self, Fail};
-use futures;
+use failure::{format_err, Fail};
 use futures::prelude::*;
-use hyper;
-use hyper_tls;
-use url::{self, Url};
+use url::Url;
 
 mod cache;
 use self::cache::Cache;
@@ -135,7 +131,7 @@ pub enum Error {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             Error::File(ref err) => err.fmt(f),
             Error::Http(ref err) => err.fmt(f),
@@ -147,7 +143,7 @@ impl std::fmt::Display for Error {
 }
 
 impl failure::Fail for Error {
-    fn cause(&self) -> Option<&Fail> {
+    fn cause(&self) -> Option<&dyn Fail> {
         match *self {
             Error::File(ref err) => Some(err),
             Error::Http(ref err) => Some(err),

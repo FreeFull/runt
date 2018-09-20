@@ -1,20 +1,8 @@
-#[macro_use]
-extern crate failure;
-extern crate bytes;
-extern crate cssparser;
-extern crate futures;
-extern crate html5ever;
-extern crate http;
-extern crate hyper;
-extern crate hyper_tls;
-extern crate termion;
-extern crate tokio;
-extern crate url;
-
 use std::default::Default;
 use std::env::args;
 use std::path::Path;
 
+use failure::format_err;
 use url::Url;
 
 mod css;
