@@ -60,22 +60,20 @@ impl Fetcher {
         use futures::future::{loop_fn, Loop};
         let fetcher = self;
         loop_fn((url, max_redirects), move |(url, max_redirects)| {
-            fetcher.get(&url).and_then(move |data| {
-                match data {
-                    Data::File(_) => {
-                        return Ok(Loop::Break(data));
-                    }
-                    Data::Http(ref request) => {
-                        if request.status().is_redirection() && max_redirects > 0 {
-                            if let Some(new_url) = request.headers().get(hyper::header::LOCATION) {
-                                let url =
-                                    url.join(new_url.to_str().map_err(failure::Error::from)?)?;
-                                return Ok(Loop::Continue((url, max_redirects - 1)));
-                            }
+            fetcher.get(&url).and_then(move |data| match data {
+                Data::File(_) => Ok(Loop::Break(data)),
+                Data::Http(ref request) => {
+                    if request.status().is_redirection() && max_redirects > 0 {
+                        if let Some(new_url) = request.headers().get(hyper::header::LOCATION) {
+                            let url = url.join(new_url.to_str().map_err(failure::Error::from)?)?;
+                            Ok(Loop::Continue((url, max_redirects - 1)))
+                        } else {
+                            Ok(Loop::Break(data))
                         }
+                    } else {
+                        Ok(Loop::Break(data))
                     }
                 }
-                Ok(Loop::Break(data))
             })
         })
     }
