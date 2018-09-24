@@ -1,9 +1,7 @@
 use std::io::Cursor;
-use std::thread;
 
 use bytes::Bytes;
-use futures::sync::mpsc::{unbounded, UnboundedSender};
-use futures::{Future, Sink, Stream};
+use futures::sync::mpsc::UnboundedSender;
 use html5ever::parse_document;
 use html5ever::rcdom::{Node, NodeData, RcDom};
 use html5ever::tendril::TendrilSink;
@@ -11,7 +9,8 @@ use std::collections::HashMap;
 use url::Url;
 
 use crate::css::Stylesheet;
-use crate::fetcher::{Data, Fetcher};
+use crate::fetcher::{self, Data};
+use crate::fetcher::thread::{FetcherRequest, make_request};
 
 pub struct Page {
     pub url: Url,
@@ -20,35 +19,26 @@ pub struct Page {
     pub stylesheets: Vec<Stylesheet>,
 }
 
-pub fn fetch(url: Url) -> Result<Page, failure::Error> {
-    let (request_tx, request_rx) = unbounded();
-    let (results_tx, results_rx) = unbounded();
-    thread::spawn(move || {
-        tokio::run(
-            futures::lazy(move || {
-                let fetcher = Fetcher::new().unwrap();
-                request_rx
-                    .and_then(move |url: Url| {
-                        fetcher
-                            .clone()
-                            .get_with_redirect(url.clone(), 30)
-                            .then(move |response| Ok((url, response)))
-                    }).forward(results_tx.sink_map_err(|_| ()))
-            }).then(|_| Ok(())),
-        )
-    });
-    request_tx.unbounded_send(url.clone()).unwrap();
-    let mut results_iter = results_rx.wait();
-    let (url, page) = results_iter.next().unwrap().unwrap();
+pub fn fetch(
+    url: Url,
+    request_tx: &UnboundedSender<FetcherRequest>,
+) -> Result<Page, failure::Error> {
+    let (url, page) = make_request(url, request_tx).wait();
     let page = page?;
     let dom = parse_document(RcDom::default(), Default::default())
         .from_utf8()
         .read_from(&mut Cursor::new(page))?;
-    fetch_resources_from_dom(&url, &dom.document, &request_tx, FetchState::default());
-    drop(request_tx);
+    let mut requests: Vec<fetcher::thread::Receiver> = vec![];
+    fetch_resources_from_dom(
+        &url,
+        &dom.document,
+        request_tx,
+        &mut requests,
+        FetchState::default(),
+    );
     let mut resources = Resources::default();
-    for result in results_iter {
-        let (url, response) = result.unwrap();
+    for request in requests {
+        let (url, response) = request.wait();
         let (parts, data) = match response? {
             Data::File(data) => (None, data),
             Data::Http(response) => {
@@ -71,7 +61,8 @@ pub fn fetch(url: Url) -> Result<Page, failure::Error> {
 fn fetch_resources_from_dom(
     origin: &Url,
     node: &Node,
-    tx: &UnboundedSender<Url>,
+    tx: &UnboundedSender<FetcherRequest>,
+    requests: &mut Vec<fetcher::thread::Receiver>,
     mut fetch_state: FetchState,
 ) {
     match node.data {
@@ -94,7 +85,7 @@ fn fetch_resources_from_dom(
                 {
                     if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "href") {
                         if let Ok(url) = origin.join(&url.value) {
-                            tx.unbounded_send(url).expect("Fetcher send failed");
+                            requests.push(make_request(url, tx));
                         }
                     }
                 }
@@ -103,7 +94,7 @@ fn fetch_resources_from_dom(
                 let attrs = attrs.borrow();
                 if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "src") {
                     if let Ok(url) = origin.join(&url.value) {
-                        tx.unbounded_send(url).expect("Fetcher send failed");
+                        requests.push(make_request(url, tx));
                     }
                 }
             }
@@ -115,7 +106,7 @@ fn fetch_resources_from_dom(
         _ => {}
     }
     for child in node.children.borrow().iter() {
-        fetch_resources_from_dom(origin, child, tx, fetch_state);
+        fetch_resources_from_dom(origin, child, tx, requests, fetch_state);
     }
 }
 

@@ -11,6 +11,8 @@ use url::Url;
 
 mod cache;
 use self::cache::Cache;
+pub mod thread;
+
 
 #[derive(Debug, Clone)]
 pub struct Fetcher {

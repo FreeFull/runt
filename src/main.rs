@@ -26,7 +26,8 @@ fn run() -> Result<(), failure::Error> {
         parsed_url = Ok(Url::from_file_path(path)
             .map_err(|()| format_err!("Failed to convert path to URL: {}", url))?);
     }
-    let page = page::fetch(parsed_url?)?;
+    let request_tx = fetcher::thread::spawn();
+    let page = page::fetch(parsed_url?, &request_tx)?;
     display::display(&page.dom.document, 0, Default::default());
     println!("");
     Ok(())
