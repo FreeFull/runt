@@ -3,22 +3,41 @@ use cssparser::{
     DeclarationListParser, DeclarationParser, Delimiter, ParseError, Parser, ParserInput,
     QualifiedRuleParser, RuleListParser, SourceLocation, ToCss, Token,
 };
-use failure::Error;
 use std::marker::PhantomData;
 use url::Url;
 
-use super::types::*;
+use super::*;
 
-#[cfg(test)]
-mod tests;
+#[derive(Debug)]
+pub enum Error {
+    Url(url::ParseError),
+}
+
+impl From<url::ParseError> for Error {
+    fn from(err: url::ParseError) -> Error {
+        Error::Url(err)
+    }
+}
+
+#[derive(Debug)]
+enum ParseErrorKind<'i> {
+    Selector(selectors::parser::SelectorParseErrorKind<'i>),
+    Other,
+}
+
+impl<'i> From<selectors::parser::SelectorParseErrorKind<'i>> for ParseErrorKind<'i> {
+    fn from(err: selectors::parser::SelectorParseErrorKind<'i>) -> ParseErrorKind<'i> {
+        ParseErrorKind::Selector(err)
+    }
+}
 
 impl Stylesheet {
-    fn parse(stylesheet: &str, url: Url) -> Result<Stylesheet, Error> {
+    pub fn parse(stylesheet: &str, url: &Url) -> Result<Stylesheet, Error> {
         let mut input = ParserInput::new(stylesheet);
         let mut parser = Parser::new(&mut input);
         let rules = RuleListParser::new_for_stylesheet(&mut parser, TopLevelRuleParser::new())
-            .collect::<Result<_, _>>()
-            .unwrap();
+            .filter_map(|item| item.ok())
+            .collect();
         Ok(Stylesheet {
             rules,
             base_url: url.join("")?,
@@ -39,15 +58,16 @@ impl<'a> TopLevelRuleParser<'a> {
 }
 
 impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser<'i> {
-    type Prelude = Vec<SelectorChain>;
+    type Prelude = selectors::SelectorList<super::super::selectors::Impl>;
     type QualifiedRule = Rule;
-    type Error = ();
+    type Error = ParseErrorKind<'i>;
 
     fn parse_prelude<'t>(
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        input.parse_comma_separated(parse_selector_chain)
+        let selector_parser = crate::css::selectors::Parser;
+        selectors::SelectorList::parse(&selector_parser, input).map_err(|e| e.into())
     }
 
     fn parse_block<'t>(
@@ -59,25 +79,23 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser<'i> {
         let declaration_parser = DeclarationListParser::new(input, RuleDeclarationParser {});
         Ok(Rule {
             selectors: prelude,
-            declarations: declaration_parser
-                .collect::<Result<_, _>>()
-                .map_err(|x| x.0)?,
+            declarations: declaration_parser.filter_map(|dec| dec.ok()).collect(),
         })
     }
 }
 
-impl<'a> AtRuleParser<'a> for TopLevelRuleParser<'a> {
+impl<'i> AtRuleParser<'i> for TopLevelRuleParser<'i> {
     type PreludeNoBlock = ();
     type PreludeBlock = ();
     type AtRule = Rule;
-    type Error = ();
+    type Error = ParseErrorKind<'i>;
 }
 
 struct RuleDeclarationParser {}
 
 impl<'i> DeclarationParser<'i> for RuleDeclarationParser {
     type Declaration = Declaration;
-    type Error = ();
+    type Error = ParseErrorKind<'i>;
     fn parse_value<'t>(
         &mut self,
         name: CowRcStr<'i>,
@@ -115,25 +133,5 @@ impl<'i> AtRuleParser<'i> for RuleDeclarationParser {
     type PreludeNoBlock = ();
     type PreludeBlock = ();
     type AtRule = Declaration;
-    type Error = ();
-}
-
-fn parse_selector_chain<'i, 'tt>(
-    parser: &mut Parser<'i, 'tt>,
-) -> Result<SelectorChain, ParseError<'i, ()>> {
-    Ok(SelectorChain::Simple(parse_simple_selector(parser)?))
-}
-
-fn parse_simple_selector<'i, 'tt>(
-    parser: &mut Parser<'i, 'tt>,
-) -> Result<SimpleSelector, ParseError<'i, ()>> {
-    let mut selector = SimpleSelector::default();
-    match parser.next() {
-        Ok(&Token::Ident(ref ident)) => {
-            selector.type_selector = TypeSelector::Type(String::from(&**ident));
-        }
-        Ok(_) => unimplemented!(),
-        Err(err) => return Err(ParseError::from(err)),
-    }
-    Ok(selector)
+    type Error = ParseErrorKind<'i>;
 }

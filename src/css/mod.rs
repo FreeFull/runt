@@ -1,4 +1,4 @@
-mod parser;
-mod types;
+mod selectors;
+mod stylesheet;
 
-pub use self::types::Stylesheet;
+pub use self::stylesheet::Stylesheet;
