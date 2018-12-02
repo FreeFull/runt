@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use url::Url;
 
 use crate::css::Stylesheet;
+use crate::fetcher::thread::{make_request, FetcherRequest};
 use crate::fetcher::{self, Data};
-use crate::fetcher::thread::{FetcherRequest, make_request};
 
 pub struct Page {
     pub url: Url,
@@ -50,11 +50,13 @@ pub fn fetch(
             .resources
             .insert(url.clone(), Resource { url, parts, data });
     }
+    let mut stylesheets = vec![];
+    extract_stylesheets(&url, &dom.document, &resources, &mut stylesheets);
     Ok(Page {
         url,
         resources,
         dom,
-        stylesheets: vec![],
+        stylesheets,
     })
 }
 
@@ -120,6 +122,65 @@ enum FetchState {
 impl std::default::Default for FetchState {
     fn default() -> FetchState {
         FetchState::Default
+    }
+}
+
+fn extract_stylesheets(
+    origin: &Url,
+    node: &Node,
+    resources: &Resources,
+    stylesheets: &mut Vec<Stylesheet>,
+) {
+    match node.data {
+        NodeData::Element {
+            ref name,
+            ref attrs,
+            ..
+        } => match &*name.local.to_ascii_lowercase() {
+            "link" => {
+                let attrs = attrs.borrow();
+                if attrs
+                    .iter()
+                    .any(|attr| &attr.name.local == "rel" && &*attr.value == "stylesheet")
+                {
+                    let url = match attrs.iter().find(|attr| &attr.name.local == "href") {
+                        Some(url) => url,
+                        None => return,
+                    };
+                    let url = match origin.join(&url.value) {
+                        Ok(url) => url,
+                        Err(_) => return,
+                    };
+                    if let Some(stylesheet) = resources.resources.get(&url).clone() {
+                        if let Ok(stylesheet) = std::str::from_utf8(&stylesheet.data) {
+                            // TODO: Error handling
+                            if let Ok(stylesheet) = Stylesheet::parse(stylesheet, &url) {
+                                stylesheets.push(stylesheet);
+                            }
+                        }
+                    }
+                }
+            }
+            "style" => {
+                if let Some(text) = node.children.borrow().get(0) {
+                    match text.data {
+                        NodeData::Text { ref contents } => {
+                            let stylesheet = Stylesheet::parse(&contents.borrow(), origin).unwrap();
+                            stylesheets.push(stylesheet);
+                        }
+                        _ => return,
+                    }
+                }
+            }
+            "template" => {
+                return;
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    for child in node.children.borrow().iter() {
+        extract_stylesheets(origin, child, resources, stylesheets);
     }
 }
 

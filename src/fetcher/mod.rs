@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -12,7 +11,6 @@ use url::Url;
 mod cache;
 use self::cache::Cache;
 pub mod thread;
-
 
 #[derive(Debug, Clone)]
 pub struct Fetcher {

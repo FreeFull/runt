@@ -24,7 +24,8 @@ pub fn spawn() -> UnboundedSender<FetcherRequest> {
                             Ok(())
                         })
                 })
-            }).then(|_| Ok(())),
+            })
+            .then(|_| Ok(())),
         )
     });
     request_tx
