@@ -1,44 +1,30 @@
-use std::io::Cursor;
-
 use bytes::Bytes;
-use futures::sync::mpsc::UnboundedSender;
-use html5ever::parse_document;
-use html5ever::rcdom::{Node, NodeData, RcDom};
-use html5ever::tendril::TendrilSink;
+use kuchiki::{traits::*, ElementData, Node, NodeData, NodeRef};
 use std::collections::HashMap;
+use std::future::Future;
 use url::Url;
 
-use crate::css::Stylesheet;
-use crate::fetcher::thread::{make_request, FetcherRequest};
-use crate::fetcher::{self, Data};
+use crate::fetcher::{self, Data, Error, Fetcher};
 
 pub struct Page {
     pub url: Url,
     pub resources: Resources,
-    pub dom: RcDom,
-    pub stylesheets: Vec<Stylesheet>,
+    pub document: kuchiki::NodeRef,
 }
 
-pub fn fetch(
-    url: Url,
-    request_tx: &UnboundedSender<FetcherRequest>,
-) -> Result<Page, failure::Error> {
-    let (url, page) = make_request(url, request_tx).wait();
-    let page = page?;
-    let dom = parse_document(RcDom::default(), Default::default())
-        .from_utf8()
-        .read_from(&mut Cursor::new(page))?;
-    let mut requests: Vec<fetcher::thread::Receiver> = vec![];
-    fetch_resources_from_dom(
+pub async fn fetch(url: Url) -> Result<Page, failure::Error> {
+    let mut fetcher = fetcher::Fetcher::new()?;
+    let page = fetcher.get_with_redirect(url.clone(), 30).await?;
+    let document = kuchiki::parse_html().one(&*String::from_utf8_lossy(page.as_ref()));
+    let responses = Box::into_pin(fetch_resources_from_dom(
         &url,
-        &dom.document,
-        request_tx,
-        &mut requests,
+        document.clone(),
+        &mut fetcher,
         FetchState::default(),
-    );
+    ))
+    .await;
     let mut resources = Resources::default();
-    for request in requests {
-        let (url, response) = request.wait();
+    for response in responses {
         let (parts, data) = match response? {
             Data::File(data) => (None, data),
             Data::Http(response) => {
@@ -46,70 +32,82 @@ pub fn fetch(
                 (Some(parts), data)
             }
         };
-        resources
-            .resources
-            .insert(url.clone(), Resource { url, parts, data });
+        resources.resources.insert(
+            url.clone(),
+            Resource {
+                url: url.clone(),
+                parts,
+                data,
+            },
+        );
     }
-    let mut stylesheets = vec![];
-    extract_stylesheets(&url, &dom.document, &resources, &mut stylesheets);
     Ok(Page {
         url,
         resources,
-        dom,
-        stylesheets,
+        document,
     })
 }
 
-fn fetch_resources_from_dom(
-    origin: &Url,
-    node: &Node,
-    tx: &UnboundedSender<FetcherRequest>,
-    requests: &mut Vec<fetcher::thread::Receiver>,
+fn fetch_resources_from_dom<'a>(
+    origin: &'a Url,
+    node: NodeRef,
+    fetcher: &'a mut Fetcher,
     mut fetch_state: FetchState,
-) {
-    match node.data {
-        NodeData::Element {
-            ref name,
-            ref attrs,
-            ..
-        } => match &*name.local.to_ascii_lowercase() {
-            "head" => {
-                fetch_state = FetchState::InsideHead;
-            }
-            "body" => {
-                fetch_state = FetchState::InsideBody;
-            }
-            "link" => {
-                let attrs = attrs.borrow();
-                if attrs
-                    .iter()
-                    .any(|attr| &attr.name.local == "rel" && &*attr.value == "stylesheet")
-                {
-                    if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "href") {
-                        if let Ok(url) = origin.join(&url.value) {
-                            requests.push(make_request(url, tx));
+) -> Box<dyn Future<Output = Vec<Result<Data, Error>>> + 'a> {
+    Box::new(async move {
+        let mut responses = Vec::new();
+        match node.data() {
+            NodeData::Element(ElementData {
+                name,
+                attributes: attrs,
+                ..
+            }) => match &*name.local.to_ascii_lowercase() {
+                "head" => {
+                    fetch_state = FetchState::InsideHead;
+                }
+                "body" => {
+                    fetch_state = FetchState::InsideBody;
+                }
+                "link" => {
+                    let attrs = attrs.borrow();
+                    if attrs.get("rel") == Some("stylesheet") {
+                        if let Some(url) = attrs.get("href") {
+                            if let Ok(url) = origin.join(url) {
+                                responses.push(fetcher.get_with_redirect(url, 30).await);
+                            }
                         }
                     }
                 }
-            }
-            "img" => {
-                let attrs = attrs.borrow();
-                if let Some(url) = attrs.iter().find(|attr| &attr.name.local == "src") {
-                    if let Ok(url) = origin.join(&url.value) {
-                        requests.push(make_request(url, tx));
+                "img" => {
+                    let attrs = attrs.borrow();
+                    if let Some(url) = attrs.get("src") {
+                        if let Ok(url) = origin.join(&url) {
+                            responses.push(fetcher.get_with_redirect(url, 30).await);
+                        }
                     }
                 }
-            }
-            "template" => {
-                return;
-            }
+                "template" => {
+                    return responses;
+                }
+                _ => {}
+            },
             _ => {}
-        },
-        _ => {}
-    }
-    for child in node.children.borrow().iter() {
-        fetch_resources_from_dom(origin, child, tx, requests, fetch_state);
-    }
+        }
+        {
+            for child in node.children() {
+                responses.append(
+                    &mut Box::into_pin(fetch_resources_from_dom(
+                        origin,
+                        child,
+                        fetcher,
+                        fetch_state,
+                    ))
+                    .await,
+                );
+            }
+        }
+        responses
+    })
 }
 
 #[derive(Copy, Clone)]
@@ -122,65 +120,6 @@ enum FetchState {
 impl std::default::Default for FetchState {
     fn default() -> FetchState {
         FetchState::Default
-    }
-}
-
-fn extract_stylesheets(
-    origin: &Url,
-    node: &Node,
-    resources: &Resources,
-    stylesheets: &mut Vec<Stylesheet>,
-) {
-    match node.data {
-        NodeData::Element {
-            ref name,
-            ref attrs,
-            ..
-        } => match &*name.local.to_ascii_lowercase() {
-            "link" => {
-                let attrs = attrs.borrow();
-                if attrs
-                    .iter()
-                    .any(|attr| &attr.name.local == "rel" && &*attr.value == "stylesheet")
-                {
-                    let url = match attrs.iter().find(|attr| &attr.name.local == "href") {
-                        Some(url) => url,
-                        None => return,
-                    };
-                    let url = match origin.join(&url.value) {
-                        Ok(url) => url,
-                        Err(_) => return,
-                    };
-                    if let Some(stylesheet) = resources.resources.get(&url).clone() {
-                        if let Ok(stylesheet) = std::str::from_utf8(&stylesheet.data) {
-                            // TODO: Error handling
-                            if let Ok(stylesheet) = Stylesheet::parse(stylesheet, &url) {
-                                stylesheets.push(stylesheet);
-                            }
-                        }
-                    }
-                }
-            }
-            "style" => {
-                if let Some(text) = node.children.borrow().get(0) {
-                    match text.data {
-                        NodeData::Text { ref contents } => {
-                            let stylesheet = Stylesheet::parse(&contents.borrow(), origin).unwrap();
-                            stylesheets.push(stylesheet);
-                        }
-                        _ => return,
-                    }
-                }
-            }
-            "template" => {
-                return;
-            }
-            _ => {}
-        },
-        _ => {}
-    }
-    for child in node.children.borrow().iter() {
-        extract_stylesheets(origin, child, resources, stylesheets);
     }
 }
 

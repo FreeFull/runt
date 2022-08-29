@@ -5,18 +5,14 @@ use std::path::Path;
 use failure::format_err;
 use url::Url;
 
-mod css;
 mod display;
 mod fetcher;
 mod page;
 
-fn main() {
-    run().unwrap();
-}
-
-fn run() -> Result<(), failure::Error> {
+#[tokio::main]
+async fn main() -> Result<(), failure::Error> {
     let url = args().nth(1);
-    let url = url.unwrap_or(String::from("https://www.rust-lang.org/en-US/"));
+    let url = url.unwrap_or(String::from("https://www.rust-lang.org/"));
     let parsed_url;
     if url.starts_with("file:") || url.starts_with("http:") || url.starts_with("https:") {
         parsed_url = Url::parse(&url)
@@ -26,9 +22,8 @@ fn run() -> Result<(), failure::Error> {
         parsed_url = Ok(Url::from_file_path(path)
             .map_err(|()| format_err!("Failed to convert path to URL: {}", url))?);
     }
-    let request_tx = fetcher::thread::spawn();
-    let page = page::fetch(parsed_url?, &request_tx)?;
-    display::display(&page.dom.document, 0, Default::default());
+    let page = page::fetch(parsed_url?).await?;
+    display::display(&page.document, 0, Default::default());
     println!("");
     Ok(())
 }

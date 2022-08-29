@@ -1,4 +1,4 @@
-use html5ever::rcdom::{Node, NodeData};
+use kuchiki::{Node, NodeData};
 use termion::style;
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -29,8 +29,8 @@ impl Style {
 
 pub fn display(node: &Node, depth: u32, style: Style) {
     style.show();
-    match node.data {
-        NodeData::Text { ref contents } => {
+    match node.data() {
+        NodeData::Text(contents) => {
             if !style.preformatted {
                 let contents = &**contents.borrow();
                 let contents = contents.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -39,14 +39,10 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                 print!("{}", contents.borrow());
             }
         }
-        NodeData::Element {
-            ref name,
-            ref attrs,
-            ..
-        } => {
+        NodeData::Element(ref data) => {
             let mut new_style = style;
-            if name.prefix == None {
-                match &*name.local {
+            if data.name.prefix == None {
+                match &*data.name.local {
                     "b" | "strong" | "h1" | "h2" | "h3" | "h4" => {
                         new_style.bold += 1;
                     }
@@ -63,10 +59,10 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                         print!("\n * ");
                     }
                     "img" => {
-                        let attrs = attrs.borrow();
-                        let alt = attrs.iter().find(|attr| &*attr.name.local == "alt");
+                        let attrs = data.attributes.borrow();
+                        let alt = attrs.get("alt");
                         if let Some(alt) = alt {
-                            print!(r#"<img alt="{}">"#, alt.value);
+                            print!(r#"<img alt="{}">"#, alt);
                         } else {
                             print!("<img>");
                         }
@@ -84,16 +80,20 @@ pub fn display(node: &Node, depth: u32, style: Style) {
                     _ => {}
                 }
             }
-            for child in &*node.children.borrow() {
-                display(child, depth + 1, new_style);
+            {
+                let mut node = node.first_child();
+                while let Some(child) = node {
+                    display(&child, depth + 1, new_style);
+                    node = child.next_sibling();
+                }
             }
-            if name.prefix == None {
-                match &*name.local {
+            if data.name.prefix == None {
+                match &*data.name.local {
                     "a" => {
-                        let attrs = attrs.borrow();
-                        let href = attrs.iter().find(|attr| &*attr.name.local == "href");
+                        let attrs = data.attributes.borrow();
+                        let href = attrs.get("href");
                         if let Some(href) = href {
-                            print!(r#"<{}>"#, href.value);
+                            print!(r#"<{}>"#, href);
                         } else {
                             print!("<>");
                         }
@@ -107,8 +107,10 @@ pub fn display(node: &Node, depth: u32, style: Style) {
             style.show()
         }
         _ => {
-            for child in &*node.children.borrow() {
-                display(child, depth + 1, style);
+            let mut node = node.first_child();
+            while let Some(child) = node {
+                display(&child, depth + 1, style);
+                node = child.next_sibling();
             }
         }
     }
