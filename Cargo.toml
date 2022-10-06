@@ -8,12 +8,12 @@ edition = "2021"
 [dependencies]
 bytes = "1.2.1"
 chrono = "0.4.22"
-failure = "0.1.8"
 futures = "0.3.24"
 hyper = { version = "0.14.20", features = ["full"] }
 hyper-tls = "0.5.0"
 http = "0.2.8"
 termion = "1.5.6"
-tokio = { version = "1.20.1", features = ["full"] }
-url = "2.2.2"
+tokio = { version = "1.21.2", features = ["full"] }
+url = "2.3.1"
 kuchiki = "0.8.1"
+anyhow = "1.0.65"

@@ -2,7 +2,7 @@ use std::default::Default;
 use std::env::args;
 use std::path::Path;
 
-use failure::format_err;
+use anyhow::format_err;
 use url::Url;
 
 mod display;
@@ -10,7 +10,7 @@ mod fetcher;
 mod page;
 
 #[tokio::main]
-async fn main() -> Result<(), failure::Error> {
+async fn main() -> Result<(), anyhow::Error> {
     let url = args().nth(1);
     let url = url.unwrap_or(String::from("https://www.rust-lang.org/"));
     let parsed_url;

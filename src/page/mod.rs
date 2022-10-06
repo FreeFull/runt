@@ -12,7 +12,7 @@ pub struct Page {
     pub document: kuchiki::NodeRef,
 }
 
-pub async fn fetch(url: Url) -> Result<Page, failure::Error> {
+pub async fn fetch(url: Url) -> Result<Page, anyhow::Error> {
     let mut fetcher = fetcher::Fetcher::new()?;
     let page = fetcher.get_with_redirect(url.clone(), 30).await?;
     let document = kuchiki::parse_html().one(&*String::from_utf8_lossy(page.as_ref()));

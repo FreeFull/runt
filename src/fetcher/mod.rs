@@ -3,8 +3,8 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use anyhow::format_err;
 use bytes::Bytes;
-use failure::{format_err, Fail};
 use url::Url;
 
 mod cache;
@@ -62,7 +62,7 @@ impl Fetcher {
                 Data::Http(ref request) => {
                     if request.status().is_redirection() && max_redirects > 0 {
                         if let Some(new_url) = request.headers().get(hyper::header::LOCATION) {
-                            url = url.join(new_url.to_str().map_err(failure::Error::from)?)?;
+                            url = url.join(new_url.to_str().map_err(anyhow::Error::from)?)?;
                         } else {
                             return Ok(data);
                         }
@@ -113,7 +113,7 @@ pub enum Error {
     File(std::io::Error),
     Http(hyper::Error),
     UrlParseError(url::ParseError),
-    Other(failure::Error),
+    Other(anyhow::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -123,17 +123,6 @@ impl std::fmt::Display for Error {
             Error::Http(ref err) => err.fmt(f),
             Error::UrlParseError(ref err) => err.fmt(f),
             Error::Other(ref err) => err.fmt(f),
-        }
-    }
-}
-
-impl failure::Fail for Error {
-    fn cause(&self) -> Option<&dyn Fail> {
-        match *self {
-            Error::File(ref err) => Some(err),
-            Error::Http(ref err) => Some(err),
-            Error::UrlParseError(ref err) => Some(err),
-            Error::Other(ref err) => Some(err.as_fail()),
         }
     }
 }
@@ -156,8 +145,10 @@ impl From<url::ParseError> for Error {
     }
 }
 
-impl From<failure::Error> for Error {
-    fn from(error: failure::Error) -> Error {
+impl From<anyhow::Error> for Error {
+    fn from(error: anyhow::Error) -> Error {
         Error::Other(error)
     }
 }
+
+impl std::error::Error for Error {}
