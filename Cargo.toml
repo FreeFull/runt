@@ -2,7 +2,7 @@
 authors = ["Filip Szczepański <jazz2rulez@gmail.com>"]
 license = "MIT"
 name = "runt"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -12,8 +12,10 @@ futures = "0.3.28"
 hyper = { version = "0.14.25", features = ["full"] }
 hyper-tls = "0.5.0"
 http = "0.2.9"
-termion = "2.0.1"
 tokio = { version = "1.27.0", features = ["full"] }
 url = "2.3.1"
 kuchiki = "0.8.1"
 anyhow = "1.0.70"
+ratatui = "0.26.3"
+ratatui-image = "1.0.1"
+crossterm = "0.27.0"

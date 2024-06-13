@@ -6,9 +6,6 @@ fetching a single HTML page from a HTTP or HTTPS URL, or the local file system.
 
 ## How to run
 
-Note: Due to the usage of the 2018 edition of Rust, Runt currently requires the nightly compiler.
-Once Rust 2018 ends up in stable, the code should still work without any changes.
-
 ```sh
 # Fetch and display the default page (currently https://www.rust-lang.org/)
 cargo run
@@ -20,6 +17,8 @@ cargo run -- 'https://www.google.com/'
 cargo run -- '/path/to/file.html'
 cargo run -- 'file:///path/to/file.html'
 ```
+
+To exit, press `q`.
 
 ## Inspirations
 

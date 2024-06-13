@@ -23,7 +23,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .map_err(|()| format_err!("Failed to convert path to URL: {}", url))?);
     }
     let page = page::fetch(parsed_url?).await?;
-    display::display(&page.document, 0, Default::default());
+    display::display(&page.document)?;
     println!("");
     Ok(())
 }
