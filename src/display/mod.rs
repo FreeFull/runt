@@ -1,11 +1,11 @@
 use std::{io, time::Duration};
 
-use crossterm::{
+use kuchiki::{Node, NodeData};
+use ratatui::{crossterm::{
     event::{self, Event, KeyCode, KeyEvent},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
-};
-use kuchiki::{Node, NodeData};
+}, style::Styled};
 use ratatui::{
     prelude::*,
     widgets::{Paragraph, Wrap},

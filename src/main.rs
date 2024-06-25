@@ -1,4 +1,3 @@
-use std::default::Default;
 use std::env::args;
 use std::path::Path;
 
@@ -24,6 +23,5 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     let page = page::fetch(parsed_url?).await?;
     display::display(&page.document)?;
-    println!("");
     Ok(())
 }
